@@ -1,11 +1,8 @@
-import firebase_admin
-from firebase_admin import credentials
 import os
 import json
+from firebase_admin import credentials, initialize_app
 
-firebase_key = json.loads(os.environ["FIREBASE_KEY"])
+firebase_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
 
-cred = credentials.Certificate(firebase_key)
-firebase_admin.initialize_app(cred, {
-    "databaseURL": "https://ridabest786-default-rtdb.firebaseio.com"
-})
+cred = credentials.Certificate(json.loads(firebase_json))
+initialize_app(cred)

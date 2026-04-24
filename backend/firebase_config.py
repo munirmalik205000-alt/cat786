@@ -1,8 +1,5 @@
-import os
-import json
-from firebase_admin import credentials, initialize_app
+import firebase_admin
+from firebase_admin import credentials
 
-firebase_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-
-cred = credentials.Certificate(json.loads(firebase_json))
-initialize_app(cred)
+cred = credentials.Certificate("serviceAccountKey.json")
+firebase_admin.initialize_app(cred)

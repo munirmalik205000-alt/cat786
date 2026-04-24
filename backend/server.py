@@ -1,3 +1,4 @@
+from firebase_config import *
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -7,7 +8,6 @@ load_dotenv(ROOT_DIR / '.env')
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
@@ -22,9 +22,6 @@ import uuid
 import base64
 from collections import deque
 
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")

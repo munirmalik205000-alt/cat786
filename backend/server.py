@@ -1,4 +1,6 @@
 from firebase_config import *
+from firebase_admin import firestore
+db = firestore.client()
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -237,26 +239,51 @@ class UserResponse(BaseModel):
     completed_cycles: int
     created_at: str
 
-@api_router.get("/check-referral/{code}")
+    @api_router.get("/check-referral/{code}")
 async def check_referral(code: str):
-    user = await db.users.find_one({"referral_code": code})
+    users_ref = db.collection("users")
+    docs = users_ref.where("referral_code", "==", code).get()
+
+    user = None
+    user_id = None
+    for doc in docs:
+        user = doc.to_dict()
+        user_id = doc.id
+
     if user:
         return {"exists": True, "name": user.get("name", "Unknown")}
     return {"exists": False, "name": None}
 
+
 @api_router.post("/auth/register")
 async def register(req: RegisterRequest, response: Response):
-    existing = await db.users.find_one({"mobile": req.mobile})
+    
+    # 🔍 Check existing user
+    docs = db.collection("users").where("mobile", "==", req.mobile).get()
+    existing = None
+    for doc in docs:
+        existing = doc.to_dict()
+
     if existing:
         raise HTTPException(status_code=400, detail="Mobile already registered")
-    
+
+    # 🔗 Referral check
     referred_by_id = None
     if req.referral_code:
-        referrer = await db.users.find_one({"referral_code": req.referral_code})
+        docs = db.collection("users").where("referral_code", "==", req.referral_code).get()
+        
+        referrer = None
+        referrer_id = None
+        for doc in docs:
+            referrer = doc.to_dict()
+            referrer_id = doc.id
+
         if not referrer:
             raise HTTPException(status_code=400, detail="Invalid referral code")
-        referred_by_id = str(referrer["_id"])
-    
+
+        referred_by_id = referrer_id
+
+    # 👤 Create user
     user_doc = {
         "name": req.name,
         "mobile": req.mobile,
@@ -276,17 +303,52 @@ async def register(req: RegisterRequest, response: Response):
         "completed_cycles": 0,
         "created_at": datetime.now(timezone.utc)
     }
-    
-    result = await db.users.insert_one(user_doc)
-    user_id = str(result.inserted_id)
-    
+
+    # 💾 Insert user
+    doc_ref = db.collection("users").add(user_doc)
+    user_id = doc_ref[1].id
+
+    # 🔁 Update referral count
     if referred_by_id:
-        await db.users.update_one(
-            {"_id": ObjectId(referred_by_id)},
-            {"$inc": {"direct_referrals": 1}}
-        )
+        db.collection("users").document(referred_by_id).update({
+            "direct_referrals": firestore.Increment(1)
+        })
+
         await handle_mlm_logic(user_id, referred_by_id)
-    
+
+    # 🔐 Tokens
+    access_token = create_access_token(user_id, req.mobile, "user")
+    refresh_token = create_refresh_token(user_id)
+
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        max_age=3600,
+        path="/"
+    )
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        max_age=604800,
+        path="/"
+    )
+
+    return {
+        "id": user_id,
+        "name": req.name,
+        "mobile": req.mobile,
+        "role": "user",
+        "referral_code": user_doc["referral_code"],
+        "has_pin": False,
+        "access_token": access_token
+    }
     access_token = create_access_token(user_id, req.mobile, "user")
     refresh_token = create_refresh_token(user_id)
     

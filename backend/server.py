@@ -258,7 +258,6 @@ async def check_referral(code: str):
 @api_router.post("/auth/register")
 async def register(req: RegisterRequest, response: Response):
     
-    # 🔍 Check existing user
     docs = db.collection("users").where("mobile", "==", req.mobile).get()
     existing = None
     for doc in docs:
@@ -267,7 +266,6 @@ async def register(req: RegisterRequest, response: Response):
     if existing:
         raise HTTPException(status_code=400, detail="Mobile already registered")
 
-    # 🔗 Referral check
     referred_by_id = None
     if req.referral_code:
         docs = db.collection("users").where("referral_code", "==", req.referral_code).get()
@@ -283,7 +281,6 @@ async def register(req: RegisterRequest, response: Response):
 
         referred_by_id = referrer_id
 
-    # 👤 Create user
     user_doc = {
         "name": req.name,
         "mobile": req.mobile,
@@ -304,11 +301,9 @@ async def register(req: RegisterRequest, response: Response):
         "created_at": datetime.now(timezone.utc)
     }
 
-    # 💾 Insert user
     doc_ref = db.collection("users").add(user_doc)
     user_id = doc_ref[1].id
 
-    # 🔁 Update referral count
     if referred_by_id:
         db.collection("users").document(referred_by_id).update({
             "direct_referrals": firestore.Increment(1)
@@ -316,7 +311,6 @@ async def register(req: RegisterRequest, response: Response):
 
         await handle_mlm_logic(user_id, referred_by_id)
 
-    # 🔐 Tokens
     access_token = create_access_token(user_id, req.mobile, "user")
     refresh_token = create_refresh_token(user_id)
 
@@ -349,35 +343,9 @@ async def register(req: RegisterRequest, response: Response):
         "has_pin": False,
         "access_token": access_token
     }
-    access_token = create_access_token(user_id, req.mobile, "user")
-    refresh_token = create_refresh_token(user_id)
-    
-    response.set_cookie(key="access_token", value=access_token, httponly=True, secure=True, samesite="none", max_age=3600, path="/")
-    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=True, samesite="none", max_age=604800, path="/")
-    
-    return {
-        "id": user_id,
-        "name": req.name,
-        "mobile": req.mobile,
-        "role": "user",
-        "referral_code": user_doc["referral_code"],
-        "has_pin": False,
-        "access_token": access_token
-    }
+ 
 
-@api_router.post("/auth/login")
-async def login(req: LoginRequest, response: Response):
-    user = await db.users.find_one({"mobile": req.mobile})
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid mobile or password")
-    
-    if not verify_password(req.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid mobile or password")
-    
-    user_id = str(user["_id"])
-    access_token = create_access_token(user_id, user["mobile"], user["role"])
-    refresh_token = create_refresh_token(user_id)
-    
+ 
     response.set_cookie(key="access_token", value=access_token, httponly=True, secure=True, samesite="none", max_age=3600, path="/")
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=True, samesite="none", max_age=604800, path="/")
     
